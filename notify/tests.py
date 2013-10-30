@@ -156,6 +156,7 @@ class TestCase(unittest.TestCase):
             '/notifications',
             data=TEST_NOTIFICATION,
             headers={'x-balanced-admin': '1'})
+        print res.data
         data = self.validateResponse(res, GET_NOTIFICATIONS_SCHEMA)
         self.assertStatus(res, 201)
 

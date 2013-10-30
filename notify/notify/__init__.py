@@ -3,8 +3,8 @@ import os
 
 import flask.config
 
+from flask.ext import restful
 from flask.ext.mongoengine import MongoEngine
-
 
 __version__ = 1
 
@@ -29,6 +29,7 @@ if os.getenv(app_name.upper() + '_ENV'):
 
 
 db = MongoEngine()
+api = restful.Api()
 
 
 def make_app():
@@ -36,6 +37,9 @@ def make_app():
 
     application = factory.create_app(app_name, cwd, settings_override=config)
     db.init_app(application)
+    api.init_app(application)
+    factory.register_resources(api, app_name, cwd)
+
     return application
 
 
