@@ -5,8 +5,8 @@ from flask import Flask, Blueprint
 
 
 def register_blueprints(app, package_name, package_path):
-    """Register all Blueprint instances on the specified Flask application found
-    in all modules for the specified package.
+    """Register all Blueprint instances on the specified Flask application
+    found in all modules for the specified package.
 
     :param app: the Flask application
     :param package_name: the package name
@@ -26,7 +26,7 @@ def register_blueprints(app, package_name, package_path):
 
 def create_app(package_name, package_path, settings_override=None):
     """Returns a :class:`Flask` application instance configured with common
-    functionality for the Overholt platform.
+    functionality.
 
     :param package_name: application package name
     :param package_path: application package path
