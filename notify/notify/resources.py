@@ -1,7 +1,7 @@
 from bson import json_util
 from flask import request, Blueprint, make_response
 from flask.ext.mongoengine.wtf import model_form
-from flask.ext.restful import Resource, fields, marshal_with, marshal
+from flask.ext.restful import Resource, fields, marshal_with, marshal, unpack
 from flask.views import MethodView
 import simplejson as json
 
@@ -13,7 +13,8 @@ from notify import api
 
 notification_fields = {
     'id': fields.String,
-    'message': fields.String
+    'message': fields.String,
+    'href': fields.Url('notifications'),
 }
 
 
@@ -22,6 +23,11 @@ def as_json(data, code, headers=None):
     resp = make_response(json.dumps(data), code)
     resp.headers.extend(headers or {})
     return resp
+
+
+def response_maker(rv):
+    data, code, headers = unpack(rv)
+    return api.make_response(data, code, headers=headers)
 
 
 class RegistrationMixin(object):
@@ -36,9 +42,9 @@ class RegistrationMixin(object):
 
 class Notifications(Resource, RegistrationMixin):
 
-    url = '/notifications/<string:pk>'
+    url = '/notifications/<string:id>'
 
-    method_decorators = [
+    decorators = [
         utils.crossdomain(origin=config.get('CORS_DOMAIN')),
     ]
 
@@ -63,14 +69,15 @@ class NotificationsList(Resource, RegistrationMixin):
 
     url = '/notifications'
 
-    method_decorators = [
-        utils.crossdomain(origin=config.get('CORS_DOMAIN')),
+    decorators = [
+        utils.crossdomain(origin=config.get('CORS_DOMAIN'))
     ]
 
     @marshal_with(notification_fields)
     def get(self):
-        models.Notification.objects.all()
+        return models.Notification.objects.all()
 
+    @api.output
     def post(self):
         form_cls = model_form(models.Notification)
         notification = models.Notification()
@@ -80,8 +87,7 @@ class NotificationsList(Resource, RegistrationMixin):
 
         form.populate_obj(notification)
         notification.save()
-        marshalled = marshal(notification, notification_fields)
-        return marshalled, 201
+        return marshal(notification, notification_fields), 201
 
 
 user_fields = {
@@ -92,9 +98,9 @@ user_fields = {
 
 class Users(Resource, RegistrationMixin):
 
-    url = '/users/<string:pk>'
+    url = '/users/<string:id>'
 
-    method_decorators = [
+    decorators = [
         utils.crossdomain(origin=config.get('CORS_DOMAIN')),
         auth.admin()
     ]
@@ -108,7 +114,7 @@ class UsersList(Resource, RegistrationMixin):
 
     url = '/users'
 
-    method_decorators = [
+    decorators = [
         utils.crossdomain(origin=config.get('CORS_DOMAIN')),
         auth.admin()
     ]

@@ -10,12 +10,19 @@ class User(db.Document):
     first_name = db.StringField(max_length=50)
     last_name = db.StringField(max_length=50)
 
+    def keys(self):
+        return self._fields_ordered
+
 
 class Notification(db.Document):
 
     message = db.StringField()
     user_id = db.ReferenceField(User)
     created_at = db.DateTimeField()
+
+    def keys(self):
+        return self._fields_ordered
+
 
 
 class _Notification(object):

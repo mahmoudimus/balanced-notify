@@ -6,7 +6,7 @@ from flask import make_response, request, current_app
 
 def crossdomain(origin=None, methods=None, headers=None,
                 max_age=21600, attach_to_all=True,
-                automatic_options=True):
+                automatic_options=True, response_maker=None):
     if methods is not None:
         methods = ', '.join(sorted(x.upper() for x in methods))
     if headers is not None and not isinstance(headers, basestring):
@@ -15,6 +15,8 @@ def crossdomain(origin=None, methods=None, headers=None,
         origin = ', '.join(origin)
     if isinstance(max_age, timedelta):
         max_age = max_age.total_seconds()
+    if not response_maker:
+        response_maker = make_response
 
     def get_methods():
         if methods is not None:
@@ -28,7 +30,8 @@ def crossdomain(origin=None, methods=None, headers=None,
             if automatic_options and request.method == 'OPTIONS':
                 resp = current_app.make_default_options_response()
             else:
-                resp = make_response(f(*args, **kwargs))
+                rv = f(*args, **kwargs)
+                resp = response_maker(rv)
             if not attach_to_all and request.method != 'OPTIONS':
                 return resp
 
