@@ -1,4 +1,4 @@
-from bson import json_util
+from bson import json_util, ObjectId
 from flask import request, Blueprint, make_response
 from flask.ext.mongoengine.wtf import model_form
 from flask.ext.restful import Resource, fields, marshal_with, marshal, unpack
@@ -11,16 +11,21 @@ from notify import config
 from notify import models
 from notify import api
 
-notification_fields = {
-    'id': fields.String,
-    'message': fields.String,
-    'href': fields.Url('notifications'),
-}
+
+def _json_encoder(obj):
+    if isinstance(obj, ObjectId):
+        return '{}'.format(obj)
 
 
 @api.representation('application/json')
 def as_json(data, code, headers=None):
-    resp = make_response(json.dumps(data), code)
+    if not hasattr(data, '__iter__'):
+        data = [data]
+
+    envelope = {
+        'data': [data]
+    }
+    resp = make_response(json.dumps(envelope, default=_json_encoder), code)
     resp.headers.extend(headers or {})
     return resp
 
@@ -38,6 +43,48 @@ class RegistrationMixin(object):
     @classmethod
     def register(cls, resource_registry):
         resource_registry.add_resource(cls, cls.url, endpoint=cls.endpoint)
+
+
+user_fields = {
+    'id': fields.String,
+    'email': fields.String
+}
+
+
+class Users(Resource, RegistrationMixin):
+
+    url = '/users/<string:id>'
+
+    decorators = [
+        utils.crossdomain(origin=config.get('CORS_DOMAIN')),
+        auth.admin()
+    ]
+
+    @marshal_with(user_fields)
+    def get(self, pk):
+        models.User.objects.get_or_404(pk=pk)
+
+
+class UsersList(Resource, RegistrationMixin):
+
+    url = '/users'
+
+    decorators = [
+        utils.crossdomain(origin=config.get('CORS_DOMAIN')),
+        auth.admin()
+    ]
+
+    @marshal_with(user_fields)
+    def get(self):
+        return models.User.objects.all()
+
+
+notification_fields = {
+    'id': fields.String,
+    'message': fields.String,
+    'href': fields.Url('notifications'),
+    'user': fields.Raw(attribute='id'),
+}
 
 
 class Notifications(Resource, RegistrationMixin):
@@ -77,6 +124,7 @@ class NotificationsList(Resource, RegistrationMixin):
     def get(self):
         return models.Notification.objects.all()
 
+
     @api.output
     def post(self):
         form_cls = model_form(models.Notification)
@@ -88,40 +136,6 @@ class NotificationsList(Resource, RegistrationMixin):
         form.populate_obj(notification)
         notification.save()
         return marshal(notification, notification_fields), 201
-
-
-user_fields = {
-    'id': fields.String,
-    'email': fields.String
-}
-
-
-class Users(Resource, RegistrationMixin):
-
-    url = '/users/<string:id>'
-
-    decorators = [
-        utils.crossdomain(origin=config.get('CORS_DOMAIN')),
-        auth.admin()
-    ]
-
-    @marshal_with(user_fields)
-    def get(self, pk):
-        models.User.objects.get_or_404(pk=pk)
-
-
-class UsersList(Resource, RegistrationMixin):
-
-    url = '/users'
-
-    decorators = [
-        utils.crossdomain(origin=config.get('CORS_DOMAIN')),
-        auth.admin()
-    ]
-
-    @marshal_with(user_fields)
-    def get(self):
-        return models.User.objects.all()
 
 
 #class NotificationView(Resource):

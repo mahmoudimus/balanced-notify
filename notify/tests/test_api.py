@@ -1,38 +1,12 @@
 import unittest
 
+from flask import url_for
 import simplejson as json
 from jsonschema import validate
 
 import notify
 from notify.models import Notification, User
 
-
-TEST_NOTIFICATION = dict(
-    message='Checkout this cool new feature on the Balanced dashboard',
-)
-
-CREATE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "data": {"type": "string"}
-    },
-    "required": ["data"]
-}
-
-CREATE_MULTI_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "data": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            },
-            "minItems": 1,
-            "uniqueItems": True
-        }
-    },
-    "required": ["data"]
-}
 
 GET_NO_NOTIFICATIONS_SCHEMA = {
     "type": "object",
@@ -45,7 +19,7 @@ GET_NO_NOTIFICATIONS_SCHEMA = {
     "required": ["data"]
 }
 
-GET_NOTIFICATIONS_SCHEMA = {
+NOTIFICATION_RESOURCE_SCHEMA = {
     "type": "object",
     "properties": {
         "data": {
@@ -54,15 +28,17 @@ GET_NOTIFICATIONS_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "message": {"type": "string"},
-                    "id": {"type": "string"}
+                    "id": {"type": "string"},
+                    "href": {'type': 'string'},
+                    'user': {'type': 'string'}
                 },
-                "required": ["id", "message"]
+                "additionalProperties": False,
             },
             "minItems": 1,
             "uniqueItems": True
         }
     },
-    "required": ["data"]
+    "additionalProperties": False,
 }
 
 GET_USERS_SCHEMA = {
@@ -90,16 +66,27 @@ class TestCase(unittest.TestCase):
 
     def setUp(self):
         app = notify.make_app()
-        self.app = app.test_client()
+        self.client = app.test_client()
+        self.user_ids = {}
         for fixture in [
             {'email': 'app@balancedpayments.com'},
             {'email': 'tests@balancedpayments.com'}
         ]:
-            User(**fixture).save()
+            identifier, _, _ = fixture['email'].partition('@')
+            _user = User(**fixture).save()
+            self.user_ids[identifier] = _user
 
     def tearDown(self):
         Notification.objects.delete()
         User.objects.delete()
+
+    @property
+    def app_user_id(self):
+        return self.user_ids['app'].id
+
+    @property
+    def tests_user_id(self):
+        return self.user_ids['tests'].id
 
     def assertStatus(self, response, status_code):
         """
@@ -124,70 +111,77 @@ class TestCase(unittest.TestCase):
 
         return data
 
+    @property
+    def notification_payload(self):
+        return dict(
+            message='Checkout this cool new feature on the Balanced dashboard',
+            user=self.tests_user_id,
+        )
+
     def test_create_notification(self):
-        res = self.app.post(
+        res = self.client.post(
             '/notifications',
-            data=TEST_NOTIFICATION,
+            data=self.notification_payload,
             headers={'x-balanced-admin': '1'})
 
-        data = self.validateResponse(res, CREATE_SCHEMA)
+        data = self.validateResponse(res, NOTIFICATION_RESOURCE_SCHEMA)
         self.assertStatus(res, 201)
 
         return data['data']
 
     def test_create_notification_unauthorized(self):
-        res = self.app.post(
+        res = self.client.post(
             '/notifications',
-            data=TEST_NOTIFICATION)
+            data=self.notification_payload)
 
         self.assertStatus(res, 401)
 
     def test_create_notification_not_admin_authorized(self):
-        res = self.app.post(
+        res = self.client.post(
             '/notifications',
-            data=TEST_NOTIFICATION,
-            headers={'x-balanced-user': USER_ID})
+            data=self.notification_payload,
+            headers={'x-balanced-user': self.app_user_id})
 
         self.assertStatus(res, 401)
 
     def test_create_multi_notification(self):
-        TEST_NOTIFICATION.pop('uid', None)
-        res = self.app.post(
+        self.notification_payload.pop('uid', None)
+        res = self.client.post(
             '/notifications',
-            data=TEST_NOTIFICATION,
+            data=self.notification_payload,
             headers={'x-balanced-admin': '1'})
         print res.data
-        data = self.validateResponse(res, GET_NOTIFICATIONS_SCHEMA)
+        data = self.validateResponse(res, NOTIFICATION_RESOURCE_SCHEMA)
         self.assertStatus(res, 201)
 
         return data['data']
 
     def test_get_notifications(self):
         notification_id = self.test_create_notification()
-        res = self.app.get(
+        res = self.client.get(
             '/notifications',
-            headers={'x-balanced-user': USER_ID})
+            headers={'x-balanced-user': self.app_user_id})
 
-        data = self.validateResponse(res, GET_NOTIFICATIONS_SCHEMA)
+        data = self.validateResponse(res, NOTIFICATION_RESOURCE_SCHEMA)
         self.assertEqual(notification_id, data['data'][0]['id'])
         self.assertEqual(
-            TEST_NOTIFICATION.get('message'),
+            self.notification_payload.get('message'),
             data['data'][0]['message'])
 
         self.assertStatus(res, 200)
 
     def test_get_notifications_unauthorized(self):
         notification_id = self.test_create_notification()
-        res = self.app.get(
+        res = self.client.get(
             '/notifications')
 
         self.assertStatus(res, 401)
 
     def test_delete_notifications(self):
         notification_id = self.test_create_notification()
-        res = self.app.delete(
+        res = self.client.delete(
             '/notifications/' + notification_id,
-            headers={'x-balanced-user': USER_ID})
+            headers={'x-balanced-user': self.app_user_id})
 
         self.assertStatus(res, 204)
         self.test_get_no_notifications()
@@ -195,37 +189,37 @@ class TestCase(unittest.TestCase):
     def test_delete_notifications_twice(self):
         notification_id = self.test_create_notification()
         for expected_status_code in (204, 403):
-            resp = self.app.delete(
+            resp = self.client.delete(
                 '/notifications/' + notification_id,
-                headers={'x-balanced-user': USER_ID})
+                headers={'x-balanced-user': self.app_user_id})
 
             self.assertStatus(resp, expected_status_code)
 
     def test_delete_notifications_unauthorized(self):
         notification_id = self.test_create_notification()
-        res = self.app.delete(
+        res = self.client.delete(
             '/notifications/' + notification_id)
 
         self.assertStatus(res, 401)
 
     def test_delete_notifications_another_user(self):
         notification_id = self.test_create_notification()
-        res = self.app.delete(
+        res = self.client.delete(
             '/notifications/' + notification_id,
             headers={'x-balanced-user': '5'})
 
         self.assertStatus(res, 403)
 
     def test_delete_notifications_random_id(self):
-        res = self.app.delete(
+        res = self.client.delete(
             '/notifications/1dnnn',
             headers={'x-balanced-user': '5'})
 
         self.assertStatus(res, 403)
 
     def test_get_no_notifications(self):
-        res = self.app.get(
-            '/notifications', headers={'x-balanced-user': USER_ID})
+        res = self.client.get(
+            '/notifications', headers={'x-balanced-user': self.app_user_id})
 
         self.assertIn('[]', res.data)
 
@@ -233,7 +227,7 @@ class TestCase(unittest.TestCase):
         self.assertStatus(res, 200)
 
     def test_get_users(self):
-        res = self.app.get(
+        res = self.client.get(
             '/users', headers={'x-balanced-admin': '1'})
 
         data = json.loads(res.data)
@@ -243,13 +237,13 @@ class TestCase(unittest.TestCase):
         self.assertStatus(res, 200)
 
     def test_get_users_unauthorized(self):
-        res = self.app.get(
+        res = self.client.get(
             '/users')
 
         self.assertStatus(res, 401)
 
     def test_get_users_not_admin_authorized(self):
-        res = self.app.get(
+        res = self.client.get(
             '/users', headers={'x-balanced-user': '1'})
 
         self.assertStatus(res, 401)

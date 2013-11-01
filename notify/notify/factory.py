@@ -4,8 +4,6 @@ import inspect
 import pkgutil
 from flask import Flask, Blueprint
 
-from notify.resources import RegistrationMixin
-
 
 def register_blueprints(app, package_name, package_path):
     """Register all Blueprint instances on the specified Flask application
@@ -37,6 +35,8 @@ def register_resources(api, package_name, package_path):
     :param package_path: the package path
 
     """
+    from notify.resources import RegistrationMixin
+
     if not isinstance(package_path, (list, tuple)):
         package_path = [package_path]
 
@@ -69,10 +69,8 @@ def create_app(package_name, package_path, settings_override=None):
     """
     app = Flask(package_name, instance_relative_config=True)
 
-    app.config.from_object('notify.settings')
+    app.config.from_object(package_name + '.settings')
     app.config.from_pyfile('settings.cfg', silent=True)
     app.config.from_object(settings_override)
-
-    register_blueprints(app, package_name, [package_path])
 
     return app

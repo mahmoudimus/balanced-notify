@@ -17,8 +17,8 @@ class User(db.Document):
 class Notification(db.Document):
 
     message = db.StringField()
-    user_id = db.ReferenceField(User)
     created_at = db.DateTimeField()
+    user = db.ReferenceField(User, required=True)
 
     def keys(self):
         return self._fields_ordered
